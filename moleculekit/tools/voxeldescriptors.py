@@ -139,12 +139,13 @@ def getCenters(mol=None, buffer=0, boxsize=None, center=None, voxelsize=1):
         [bb_min, bb_max] = boundingBox(mol)
         bb_min -= buffer
         bb_max += buffer
-        nvoxels = np.ceil((bb_max - bb_min) / voxelsize).astype(int) + 1  # TODO: Why the +1?
+        nvoxels = np.ceil((bb_max - bb_min) / voxelsize).astype(int)
     else:
         boxsize = np.array(boxsize)
         center = np.array(center)
-        nvoxels = np.ceil(boxsize / voxelsize).astype(int)
-        bb_min = center - (boxsize / 2)  
+        bb_min = center - boxsize // 2 - buffer
+        bb_max = center + np.ceil(boxsize/2) + buffer
+        nvoxels = np.ceil((bb_max - bb_min) / voxelsize).astype(int)
     # Calculate grid centers
     centers = _getGridCenters(*list(nvoxels), voxelsize) + bb_min
     centers = centers.reshape(np.prod(nvoxels), 3).copy()  # Copy otherwise C code reads it wrong
