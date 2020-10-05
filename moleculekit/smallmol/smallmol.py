@@ -147,9 +147,9 @@ class SmallMol(object):
 
                 with tempfile.TemporaryFile(mode='w+') as stderr:
                     # Redirect stderr to a file
-                    temp_fileno = os.dup(sys.stderr.fileno())
-                    os.dup2(stderr.fileno(), sys.stderr.fileno()) # Change process stderr
-                    sys.stderr = stderr # Change Python stderr
+                    # temp_fileno = os.dup(sys.stderr.fileno())
+                    # os.dup2(stderr.fileno(), sys.stderr.fileno()) # Change process stderr
+                    # sys.stderr = stderr # Change Python stderr
 
                     # load mol2 file
                     if name_suffix == ".mol2":
@@ -165,14 +165,14 @@ class SmallMol(object):
                         os.remove(sdf)
 
                     # Reset stderr
-                    os.dup2(temp_fileno, sys.__stderr__.fileno())
-                    os.close(temp_fileno)
-                    sys.stderr = sys.__stderr__
+                    # os.dup2(temp_fileno, sys.__stderr__.fileno())
+                    # os.close(temp_fileno)
+                    # sys.stderr = sys.__stderr__
 
-                    # Read RDKit warnings
-                    stderr.flush()
-                    stderr.seek(0)
-                    message = stderr.read()
+                    # # Read RDKit warnings
+                    # stderr.flush()
+                    # stderr.seek(0)
+                    # message = stderr.read()
 
                 if verbose:
                     logger.warning(message)
