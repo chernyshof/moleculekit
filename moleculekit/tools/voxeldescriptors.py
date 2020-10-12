@@ -271,16 +271,20 @@ def _getPropertiesRDkit(smallmol):
     from moleculekit.smallmol.util import factory
     n_atoms = smallmol.numAtoms
 
+    atoms = ['C', 'O', 'N', 'S', 'P', 'Cl', 'F']
+
     atom_mapping = {"Hydrophobe": 0,
                     "LumpedHydrophobe": 0,
                     "Aromatic": 1,
                     "Acceptor": 2,
                     "Donor": 3,
                     "PosIonizable": 4,
-                    "NegIonizable": 5}
+                    "NegIonizable": 5,
+                    "ZnBinder": 6,
+                    }
 
     feats = factory.GetFeaturesForMol(smallmol._mol)
-    properties = np.zeros((n_atoms, 8), dtype=bool)
+    properties = np.zeros((n_atoms, 16), dtype=bool)
 
     for feat in feats:
         fam = feat.GetFamily()
@@ -288,8 +292,12 @@ def _getPropertiesRDkit(smallmol):
             continue
         properties[feat.GetAtomIds(), atom_mapping[fam]] = 1
 
+    for idx, atom in enumerate(atoms):
+        properties[:, 7+idx] = smallmol.get('element') == atom
+
     # Occupancy, ignoring hydrogens.
-    properties[:, 7] = smallmol.get('element') != 'H'
+    properties[:, 14] = ~np.isin(smallmol.get('element'), atoms + ['H'])
+    # smallmol.get('element') != 'H'
     return properties
 
 
