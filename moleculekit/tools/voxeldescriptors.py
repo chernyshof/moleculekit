@@ -14,6 +14,8 @@ from math import sqrt, exp
 from functools import lru_cache
 import logging
 
+from smallmol import SmallMol
+
 
 logger = logging.getLogger(__name__)
 
@@ -89,9 +91,179 @@ def _getGridCenters(x, y, z, resolution):
     combined = combined.reshape([x, y, z, 3])
     return combined
 
+from arpeggio import process_arpeggio
+from moleculekit.tools.atomtyper import getFeatures, getPDBQTAtomTypesAndCharges
+'''
+    hydr = _getHydrophobic(atypes)
+    arom = _getAromatic(atypes)
+    acc = _getAcceptor(atypes)
+    don = _getDonors(atypes, mol.bonds)
+    pos = _getPosIonizable(mol)
+    neg = _getNegIonizable(mol)
+    metals = _getMetals(atypes)
+    occ = _getOccupancy(elements)
+'''
+features_to_keep = np.array([0,6,7]) # we have all others from arpeggio
 
-def getChannels(mol, aromaticNitrogen=False, version=2, validitychecks=True):
-    from moleculekit.smallmol.smallmol import SmallMol
+
+arpeggio_atomtypes_unique = {
+    'aromatic': 0, 'carbonyl carbon': 1, 'carbonyl oxygen': 2, 'hbond acceptor': 3, 'hbond donor': 4, 'hydrophobe': 5, 'neg ionisable': 6, 'pos ionisable': 7, 'weak hbond acceptor': 8, 'weak hbond donor': 9, 'xbond acceptor': 10, 'xbond donor': 11
+    }
+
+'''
+arpeggio_atomtypes_unique_ligand = {
+     'carbonyl carbon': 0, 'carbonyl oxygen': 1, 'weak hbond acceptor': 2, 'weak hbond donor': 3, 'xbond acceptor': 4, 'xbond donor': 5
+    }
+
+arpeggio_atomtypes_unique_protein = {
+     'carbonyl carbon': 0, 'carbonyl oxygen': 1, 'weak hbond acceptor': 2, 'weak hbond donor': 3, 'xbond acceptor': 4
+    }
+'''
+
+# 22 amino acids
+acids = "ALA, CYS, ASP, GLU, PHE, GLY, HIS, ILE, LYS, LEU, MET, ASN, PRO, GLN, ARG, SER, THR, VAL, TRP, TYR"
+acids = [a.strip() for a in acids]
+acids = acids + ['SEC', 'PYL'] # selenocysteine and pyrrolysine
+
+# amino acid categories - from the bottom of https://en.wikipedia.org/wiki/Pyrrolysine
+amacid_cats = {'0-Aliphatic': ['VAL', 'ILE', 'LEU', 'MET', 'ALA', 'PRO', 'GLY', 'SEC'], \
+    '1-Aromatic': ['PHE','TYR', 'TRP',' HIS'],\
+    '2-Polar uncharged': ['ASN', 'GLN', 'SER', 'THR'], \
+    '3-Positive charge': ['LYS', 'ARG', 'HIS', 'PYL'], \
+    '4-Negative charge': ['ASP', 'GLU', 'CYS', 'TYR']}
+# 5 is "other"
+
+k1_l = 5 + 1
+k2_l = 8
+
+
+
+def amino_acid_feature(residue):
+    k1 = np.zeros(k1_l, dtype=bool)
+    k2 = np.zeros(k2_l, dtype=bool)
+    found = False
+    for key, value in amacid_cats.items():
+        if residue in value:
+            k1[int(key[0])] = 1
+            k2[value.index(residue)] = 1
+            found = True
+    if not found:
+        k1[-1] = 1
+    return np.concatenate([k1,k2])
+
+
+from mendeleev import element
+
+orbitals = {'s':0, 'd':1, 'p':2}
+
+
+def get_atomic_feature(elem):
+
+    per = np.zeros(6, dtype=bool)
+
+    #print(elem)
+
+
+    if elem == 'H':
+        orb1 = np.zeros(len(orbitals), dtype=bool)
+        amnt1 = np.zeros(10, dtype=bool)
+        orb2 = np.zeros(len(orbitals), dtype=bool)
+        orb2[0] = 1
+        amnt2 = np.zeros(10, dtype=bool)
+        amnt2[0] = 1
+        per[0] = 1
+    elif elem == 'N':
+        # 2s2
+        orb1 = np.zeros(len(orbitals), dtype=bool)
+        orb1[0] = 1
+        amnt1 = np.zeros(10, dtype=bool)
+        amnt1[:2] = 1
+        # 2p3
+        orb2 = np.zeros(len(orbitals), dtype=bool)
+        orb2[2] = 1
+        amnt2 = np.zeros(10, dtype=bool)
+        amnt2[:3] = 1
+        per[1] = 1
+    elif elem == 'C':
+        # 2s2
+        orb1 = np.zeros(len(orbitals), dtype=bool)
+        orb1[0] = 1
+        amnt1 = np.zeros(10, dtype=bool)
+        amnt1[:2] = 1
+        # 2p2
+        orb2 = np.zeros(len(orbitals), dtype=bool)
+        orb2[2] = 1
+        amnt2 = np.zeros(10, dtype=bool)
+        amnt2[:2] = 1
+        per[1] = 1
+    elif elem == 'O':
+        # 2s2
+        orb1 = np.zeros(len(orbitals), dtype=bool)
+        orb1[0] = 1
+        amnt1 = np.zeros(10, dtype=bool)
+        amnt1[:2] = 1
+        # 2p4
+        orb2 = np.zeros(len(orbitals), dtype=bool)
+        orb2[2] = 1
+        amnt2 = np.zeros(10, dtype=bool)
+        amnt2[:4] = 1
+        per[1] = 1
+    else:
+
+        e  = element(elem)
+
+        period = e.period - 1
+        per = np.zeros(6, dtype=bool)
+        per[period] = 1
+
+        econf = (e.econf).split(" ") # ['[He]', '2s2', '2p4'] O
+
+
+        orbital1 = econf[-2][1]
+        amount1 = int(econf[-2][2])
+
+        orbital1 = orbitals.get(orbital1, -1)
+
+        orb1 = np.zeros(len(orbitals), dtype=bool)
+        if orbital1 != -1:
+            orb1[orbital1] = 1
+
+        amnt1 = np.zeros(10, dtype=bool)
+        amnt1[:amount1] = 1
+
+        orbital2 = econf[-1][1]
+        amount2 = int(econf[-1][2])
+
+        orbital2 = orbitals.get(orbital2, -1)
+
+
+        orb2 = np.zeros(len(orbitals), dtype=bool)
+        if orbital2 != -1:
+            orb2[orbital2] = 1
+
+        # s = 2, p =6 ,d= 10
+        amnt2 = np.zeros(10, dtype=bool)
+        amnt2[:amount2] = 1
+
+
+    res = np.concatenate([per, orb1, amnt1, orb2, amnt2])
+    #print(len(res)) # 32 features
+    return res
+
+
+
+
+
+
+
+
+
+
+
+
+
+def getChannels(mol, aromaticNitrogen=False, version=2, validitychecks=True, protein=True):
+    #from moleculekit.smallmol.smallmol import SmallMol
     from moleculekit.molecule import Molecule
 
     mol = mol.copy()
@@ -102,14 +274,78 @@ def getChannels(mol, aromaticNitrogen=False, version=2, validitychecks=True):
         if version == 1:
             channels = _getAtomtypePropertiesPDBQT(mol)
         elif version == 2:
-            from moleculekit.tools.atomtyper import getFeatures, getPDBQTAtomTypesAndCharges
             mol.atomtype, mol.charge = getPDBQTAtomTypesAndCharges(mol, aromaticNitrogen=aromaticNitrogen, validitychecks=validitychecks)
+
+
+            residues = mol.resname # residue name for each atom
+            amacid_features = np.stack([amino_acid_feature(r) for r in residues], axis=0)
+
+            elements = mol.element
+
+            els = np.stack([get_atomic_feature(e) for e in elements], axis=0)
+
+
+
+
+            mol.write('temp.pdb')
+            s_atoms = process_arpeggio('temp.pdb')
+
             channels = getFeatures(mol)
+            # we take only
+            channels = channels[:,features_to_keep]
+
+            assert len(channels) == len(s_atoms)
+
+            # the order of s_atoms matches the order of channels
+            arpeggio_features = []
+
+            '''
+            if protein:
+                    arpeggio_atomtypes_unique = arpeggio_atomtypes_unique_protein
+            else:
+                    arpeggio_atomtypes_unique = arpeggio_atomtypes_unique_ligand
+            '''
+
+
+            for i, atom in enumerate(s_atoms):
+                raw_features = sorted(tuple(s_atoms[i].atom_types))
+                feature_vector = np.zeros(len(arpeggio_atomtypes_unique), dtype=bool)
+                for rf in raw_features:
+                    if rf in arpeggio_atomtypes_unique:
+                        feature_vector[arpeggio_atomtypes_unique[rf]] = 1
+
+                arpeggio_features.append(feature_vector)
+
+            arpeggio_features = np.stack(arpeggio_features, axis=0)
+
+
+            channels = np.concatenate([channels,arpeggio_features,amacid_features,els], axis=-1  )
+
+
+            '''
+            # check that the order of atoms is the same
+            coords = mol.get('coords')
+            serials = mol.get('serial')
+            for i, elem in enumerate(mol.get('element')):
+                #print(elem, s_atoms[i].get_name())
+                print(sorted(tuple(s_atoms[i].atom_types)))
+                try:
+                    assert np.allclose(coords[i],s_atoms[i].get_coord(), atol=1e-3)
+                except:
+                    print(coords[i],s_atoms[i].get_coord())
+                assert serials[i] == s_atoms[i].get_serial_number()
+
+            print('11111111111', len(channels), len(s_atoms))
+            '''
 
     if channels.dtype == bool:
         # Calculate for each channel the atom sigmas
         sigmas = _getChannelRadii(mol.get('element'))
         channels = sigmas[:, np.newaxis] * channels.astype(float)
+
+    #print(channels.shape,arpeggio_features.shape)
+    #assert channels.shape[0] == arpeggio_features.shape[0]
+    #channels = np.concatenate([channels, arpeggio_features], axis=-1 )
     return channels, mol
 
 
@@ -153,7 +389,9 @@ def getCenters(mol=None, buffer=0, boxsize=None, center=None, voxelsize=1):
 
 
 def getVoxelDescriptors(mol, boxsize=None, voxelsize=1, buffer=0, center=None, usercenters=None, userchannels=None, 
-                        usercoords=None, aromaticNitrogen=False, method='C', version=2, validitychecks=True):
+                        usercoords=None, aromaticNitrogen=False, method='C', version=2, validitychecks=True, protein=True):
+
+
     """ Calculate descriptors of atom properties for voxels in a grid bounding the Molecule object.
 
     Parameters
@@ -217,19 +455,25 @@ def getVoxelDescriptors(mol, boxsize=None, voxelsize=1, buffer=0, center=None, u
     >>> # The user can provide his own centers
     >>> features, centers = getVoxelDescriptors(mol, usercenters=[[0, 0, 0], [16, 24, -5]])
     """
+
     channels = userchannels
     if channels is None:
-        channels, mol = getChannels(mol, aromaticNitrogen, version, validitychecks)
+        channels, mol = getChannels(mol, aromaticNitrogen, version, validitychecks, protein=protein)
+
 
     if channels.dtype == bool:
         # Calculate for each channel the atom sigmas
         sigmas = _getChannelRadii(mol.element)
         channels = sigmas[:, np.newaxis] * channels.astype(float)
 
+
+
     nvoxels = None
     centers = usercenters
     if centers is None:
         centers, nvoxels = getCenters(mol, buffer, boxsize, center, voxelsize)
+
+
 
     coords = usercoords
     if coords is None:
@@ -241,6 +485,7 @@ def getVoxelDescriptors(mol, boxsize=None, voxelsize=1, buffer=0, center=None, u
         else:
             coords = coords[:, :, 0]
 
+
     # Calculate features
     if method.upper() == 'C':
         features = _getOccupancyC(coords, centers.copy(), channels)
@@ -249,10 +494,19 @@ def getVoxelDescriptors(mol, boxsize=None, voxelsize=1, buffer=0, center=None, u
     elif method.upper() == 'NUMBA':
         features = _getOccupancyNUMBA(coords, centers, channels, 5)
 
+
+
     if nvoxels is None:
         return features, centers
     else:
         return features, centers, nvoxels
+
+
+
+
+
+
+from moleculekit.smallmol.util import factory
 
 
 def _getPropertiesRDkit(smallmol):
@@ -268,10 +522,11 @@ def _getPropertiesRDkit(smallmol):
         6. Metal (empty)
         7. Occupancy (No hydrogens)
     """
-    from moleculekit.smallmol.util import factory
     n_atoms = smallmol.numAtoms
 
-    atoms = ['C', 'O', 'N', 'S', 'P', 'Cl', 'F']
+    smallmol.write('tmp.pdb')
+
+    #atoms = ['C', 'O', 'N', 'S', 'P', 'Cl', 'F']
 
     atom_mapping = {"Hydrophobe": 0,
                     "LumpedHydrophobe": 0,
@@ -283,8 +538,9 @@ def _getPropertiesRDkit(smallmol):
                     "ZnBinder": 6,
                     }
 
+
     feats = factory.GetFeaturesForMol(smallmol._mol)
-    properties = np.zeros((n_atoms, 16), dtype=bool)
+    properties = np.zeros((n_atoms, 15), dtype=bool)
 
     for feat in feats:
         fam = feat.GetFamily()
@@ -292,16 +548,25 @@ def _getPropertiesRDkit(smallmol):
             continue
         properties[feat.GetAtomIds(), atom_mapping[fam]] = 1
 
-    for idx, atom in enumerate(atoms):
-        properties[:, 7+idx] = smallmol.get('element') == atom
+    #for idx, atom in enumerate(atoms):
+    #    properties[:, 7+idx] = smallmol.get('element') == atom
+    els = np.stack([get_atomic_feature(e) for e in smallmol.get('element')], axis=0)
+
 
     # Occupancy, ignoring hydrogens.
-    properties[:, 14] = ~np.isin(smallmol.get('element'), atoms + ['H'])
+    properties[:, 14] = ~np.isin(smallmol.get('element'),  ['H'])
     # smallmol.get('element') != 'H'
-    return properties
+    return np.concatenate([properties,els], axis=-1)
 
+
+from arpeggio import process_arpeggio
 
 def _getAtomtypePropertiesPDBQT(mol):
+
+    mol.write('temp.pdb')
+    process_arpeggio('temp.pdb')
+
+
     """ Matches PDBQT atom types to specific properties
     ('hydrophobic', 'aromatic', 'hbond_acceptor', 'hbond_donor', 'positive_ionizable', 'negative_ionizable', 'metal')
 
@@ -597,7 +862,7 @@ class _TestVoxel(unittest.TestCase):
         mol.read(join(home(dataDir='test-voxeldescriptors'), '1ATL_prepared.pdb'))
 
         channels, mol_atomtyped = getChannels(mol)
- 
+
         assert np.array_equal(ref_channels, channels)
         assert mol_equal(mol_atomtyped, ref_mol)
 

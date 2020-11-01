@@ -259,11 +259,28 @@ class SmallMol(object):
         return np.array([self.ligname.strip() for _ in range(self.numAtoms)], dtype=object)
 
     @property
+    def _coords_safe(self):
+
+        def get_positions(ligand):
+            # we should use GetPositions() here, but it often leads to segfault (RDKit)
+            conf = ligand.GetConformer()
+            ligand_coords = [conf.GetAtomPosition(i)
+                              for i in range(ligand.GetNumAtoms())]
+            return ligand_coords
+
+        if self._mol.GetNumConformers() != 0:
+            #return np.array(np.stack([cc.GetPositions() for cc in self._mol.GetConformers()], axis=2), dtype=SmallMol._dtypes['coords'])
+            return np.array(np.stack([get_positions(self._mol)], axis=2), dtype=SmallMol._dtypes['coords'])
+        else:
+            return np.zeros((self.numAtoms, 3, 0), dtype=SmallMol._dtypes['coords'])
+
+    @property
     def _coords(self):
         if self._mol.GetNumConformers() != 0:
             return np.array(np.stack([cc.GetPositions() for cc in self._mol.GetConformers()], axis=2), dtype=SmallMol._dtypes['coords'])
         else:
             return np.zeros((self.numAtoms, 3, 0), dtype=SmallMol._dtypes['coords'])
+
 
     @property
     def _atomtype(self):
@@ -537,11 +554,15 @@ class SmallMol(object):
         """
         return np.array([a for a in self._mol.GetAtoms()])
 
-    def getCenter(self):
+    def getCenter(self, safe=False):
         """
         Returns geometrical center of molecule conformation
         """
-        coords = self._coords[:, :, self.frame]
+        if safe is True:
+            coords = self._coords_safe[:, :, self.frame]
+        else:
+            coords = self._coords[:, :, self.frame]
+
         return coords.mean(axis=0).astype(np.float32)
 
     def generateConformers(self, num_confs=400,  optimizemode='mmff', align=True, append=True):

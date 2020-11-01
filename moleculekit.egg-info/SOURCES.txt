@@ -2,6 +2,7 @@ README.md
 setup.py
 moleculekit/__init__.py
 moleculekit/align.py
+moleculekit/arpeggio.py
 moleculekit/config.py
 moleculekit/dihedral.py
 moleculekit/home.py
