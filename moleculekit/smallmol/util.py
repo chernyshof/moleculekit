@@ -230,7 +230,8 @@ def openbabelConvert(input_file, input_format, output_format):
         The output file generated
     """
 
-    from openbabel import openbabel
+    # from openbabel import openbabel
+    import openbabel
     import tempfile
 
     input_format = input_format[1:] if input_format.startswith(".") else input_format

@@ -2,7 +2,6 @@ README.md
 setup.py
 moleculekit/__init__.py
 moleculekit/align.py
-moleculekit/arpeggio.py
 moleculekit/config.py
 moleculekit/dihedral.py
 moleculekit/home.py
@@ -76,6 +75,7 @@ moleculekit/smallmol/tools/restrainedembed.py
 moleculekit/smallmol/tools/tautomers.py
 moleculekit/smallmol/tools/test_tools.py
 moleculekit/tools/__init__.py
+moleculekit/tools/arpeggio.py
 moleculekit/tools/atomtyper.py
 moleculekit/tools/autosegment.py
 moleculekit/tools/crystalpacking.py

@@ -14,7 +14,7 @@ from math import sqrt, exp
 from functools import lru_cache
 import logging
 
-from smallmol import SmallMol
+from moleculekit.smallmol.smallmol import SmallMol
 
 
 logger = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ def _getGridCenters(x, y, z, resolution):
     combined = combined.reshape([x, y, z, 3])
     return combined
 
-from arpeggio import process_arpeggio
+from moleculekit.tools.arpeggio import process_arpeggio
 from moleculekit.tools.atomtyper import getFeatures, getPDBQTAtomTypesAndCharges
 '''
     hydr = _getHydrophobic(atypes)
@@ -559,7 +559,7 @@ def _getPropertiesRDkit(smallmol):
     return np.concatenate([properties,els], axis=-1)
 
 
-from arpeggio import process_arpeggio
+from moleculekit.tools.arpeggio import process_arpeggio
 
 def _getAtomtypePropertiesPDBQT(mol):
 
