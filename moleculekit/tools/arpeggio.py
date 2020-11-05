@@ -14,7 +14,7 @@ from Bio.PDB.Polypeptide import PPBuilder
 import openbabel as ob
 #from openbabel import openbabel as ob
 
-from moleculekit.config import ATOM_TYPES, METALS, HALOGENS, STD_RES, PROT_ATOM_TYPES
+from moleculekit.config_mol import ATOM_TYPES, METALS, HALOGENS, STD_RES, PROT_ATOM_TYPES
 
 
 
