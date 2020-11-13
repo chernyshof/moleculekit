@@ -91,7 +91,7 @@ def _getGridCenters(x, y, z, resolution):
     combined = combined.reshape([x, y, z, 3])
     return combined
 
-from moleculekit.tools.arpeggio import process_arpeggio
+from moleculekit.tools.arpeggio_mol2 import process_arpeggio
 from moleculekit.tools.atomtyper import getFeatures, getPDBQTAtomTypesAndCharges
 '''
     hydr = _getHydrophobic(atypes)
@@ -126,15 +126,17 @@ acids = [a.strip() for a in acids]
 acids = acids + ['SEC', 'PYL'] # selenocysteine and pyrrolysine
 
 # amino acid categories - from the bottom of https://en.wikipedia.org/wiki/Pyrrolysine
-amacid_cats = {'0-Aliphatic': ['VAL', 'ILE', 'LEU', 'MET', 'ALA', 'PRO', 'GLY', 'SEC'], \
+amacid_cats = {'0-Aliphatic': ['VAL', 'ILE', 'LEU', 'ALA', 'PRO', 'GLY'], \
     '1-Aromatic': ['PHE','TYR', 'TRP',' HIS'],\
     '2-Polar uncharged': ['ASN', 'GLN', 'SER', 'THR'], \
     '3-Positive charge': ['LYS', 'ARG', 'HIS', 'PYL'], \
-    '4-Negative charge': ['ASP', 'GLU', 'CYS', 'TYR']}
-# 5 is "other"
+    '4-Negative charge': ['ASP', 'GLU', 'CYS', 'TYR'], \
+    '5-Sulf': ['MET', 'SEC', 'CYS']}
 
-k1_l = 5 + 1
-k2_l = 8
+# 6 is "other"
+
+k1_l = 6 + 1
+k2_l = 6
 
 
 
@@ -152,106 +154,55 @@ def amino_acid_feature(residue):
     return np.concatenate([k1,k2])
 
 
-from mendeleev import element
+#from mendeleev import element
 
-orbitals = {'s':0, 'd':1, 'p':2}
+# -------------------------------------------------- PERIODIC TABLE
+import mendeleev
+import numpy as np
 
+elms = mendeleev.elements.__all__
+
+
+orb_numbers = {'s':2, 'd':10, 'p':6}
+
+
+periodic_table = {}
+
+for elem in elms:
+    e  = mendeleev.element(elem)
+    conf =  e.econf
+    #print(elem, e.period, conf)
+
+    per = np.zeros(6, dtype=bool)
+    per[:e.period] = 1
+
+    orbitals1 = orb_numbers.copy()
+
+    conf = conf.split(' ')
+
+    conf = [c for c in conf if not '[' in c]
+
+    orb_feats = []
+    for orb, n_feat in orbitals1.items():
+        orb_feat = np.zeros(n_feat, dtype=bool)
+        for c in conf:
+            if orb in c.strip():
+                c1 = c.split(orb)[-1]
+                if len(c1) == 0:
+                    c1 = '1'
+                orb_feat[:int(c1)] = 1
+        orb_feats.append(orb_feat)
+
+    feats = np.concatenate([per]+orb_feats, axis=-1)
+    periodic_table[elem] = feats
+
+#for key, val in periodic_table.items():
+#    print(key, val.astype(int))
+# ---------------------------------------------------------------
 
 def get_atomic_feature(elem):
 
-    per = np.zeros(6, dtype=bool)
-
-    #print(elem)
-
-
-    if elem == 'H':
-        orb1 = np.zeros(len(orbitals), dtype=bool)
-        amnt1 = np.zeros(10, dtype=bool)
-        orb2 = np.zeros(len(orbitals), dtype=bool)
-        orb2[0] = 1
-        amnt2 = np.zeros(10, dtype=bool)
-        amnt2[0] = 1
-        per[0] = 1
-    elif elem == 'N':
-        # 2s2
-        orb1 = np.zeros(len(orbitals), dtype=bool)
-        orb1[0] = 1
-        amnt1 = np.zeros(10, dtype=bool)
-        amnt1[:2] = 1
-        # 2p3
-        orb2 = np.zeros(len(orbitals), dtype=bool)
-        orb2[2] = 1
-        amnt2 = np.zeros(10, dtype=bool)
-        amnt2[:3] = 1
-        per[1] = 1
-    elif elem == 'C':
-        # 2s2
-        orb1 = np.zeros(len(orbitals), dtype=bool)
-        orb1[0] = 1
-        amnt1 = np.zeros(10, dtype=bool)
-        amnt1[:2] = 1
-        # 2p2
-        orb2 = np.zeros(len(orbitals), dtype=bool)
-        orb2[2] = 1
-        amnt2 = np.zeros(10, dtype=bool)
-        amnt2[:2] = 1
-        per[1] = 1
-    elif elem == 'O':
-        # 2s2
-        orb1 = np.zeros(len(orbitals), dtype=bool)
-        orb1[0] = 1
-        amnt1 = np.zeros(10, dtype=bool)
-        amnt1[:2] = 1
-        # 2p4
-        orb2 = np.zeros(len(orbitals), dtype=bool)
-        orb2[2] = 1
-        amnt2 = np.zeros(10, dtype=bool)
-        amnt2[:4] = 1
-        per[1] = 1
-    else:
-
-        e  = element(elem)
-
-        period = e.period - 1
-        per = np.zeros(6, dtype=bool)
-        per[period] = 1
-
-        econf = (e.econf).split(" ") # ['[He]', '2s2', '2p4'] O
-
-
-        orbital1 = econf[-2][1]
-        amount1 = int(econf[-2][2])
-
-        orbital1 = orbitals.get(orbital1, -1)
-
-        orb1 = np.zeros(len(orbitals), dtype=bool)
-        if orbital1 != -1:
-            orb1[orbital1] = 1
-
-        amnt1 = np.zeros(10, dtype=bool)
-        amnt1[:amount1] = 1
-
-        orbital2 = econf[-1][1]
-        amount2 = int(econf[-1][2])
-
-        orbital2 = orbitals.get(orbital2, -1)
-
-
-        orb2 = np.zeros(len(orbitals), dtype=bool)
-        if orbital2 != -1:
-            orb2[orbital2] = 1
-
-        # s = 2, p =6 ,d= 10
-        amnt2 = np.zeros(10, dtype=bool)
-        amnt2[:amount2] = 1
-
-
-    res = np.concatenate([per, orb1, amnt1, orb2, amnt2])
-    #print(len(res)) # 32 features
-    return res
-
-
-
+    return periodic_table[elem.capitalize()]
 
 
 
@@ -294,32 +245,37 @@ def getChannels(mol, aromaticNitrogen=False, version=2, validitychecks=True, pro
             # we take only
             channels = channels[:,features_to_keep]
 
-            assert len(channels) == len(s_atoms)
+            #assert len(channels) == len(s_atoms)
+
 
             # the order of s_atoms matches the order of channels
             arpeggio_features = []
 
-            '''
-            if protein:
-                    arpeggio_atomtypes_unique = arpeggio_atomtypes_unique_protein
-            else:
-                    arpeggio_atomtypes_unique = arpeggio_atomtypes_unique_ligand
-            '''
 
 
             for i, atom in enumerate(s_atoms):
                 raw_features = sorted(tuple(s_atoms[i].atom_types))
                 feature_vector = np.zeros(len(arpeggio_atomtypes_unique), dtype=bool)
                 for rf in raw_features:
+                    #print(rf)
                     if rf in arpeggio_atomtypes_unique:
                         feature_vector[arpeggio_atomtypes_unique[rf]] = 1
 
                 arpeggio_features.append(feature_vector)
 
+                if feature_vector[-1] != 0:
+                    print(raw_features, feature_vector)
+
+
+
             arpeggio_features = np.stack(arpeggio_features, axis=0)
 
+            print('aaa', channels.shape, arpeggio_features.shape,amacid_features.shape,els.shape)
 
             channels = np.concatenate([channels,arpeggio_features,amacid_features,els], axis=-1  )
+            #channels = np.concatenate([arpeggio_features,amacid_features,els], axis=-1  )
+
+
 
 
             '''
@@ -346,6 +302,10 @@ def getChannels(mol, aromaticNitrogen=False, version=2, validitychecks=True, pro
     #print(channels.shape,arpeggio_features.shape)
     #assert channels.shape[0] == arpeggio_features.shape[0]
     #channels = np.concatenate([channels, arpeggio_features], axis=-1 )
+
+    #print('bbb', channels.shape,  (1000*np.mean(channels, axis=0)).astype(int))
+    #print('ccc', (1000*np.mean(channels[:,:12], axis=0)).astype(int))
+
     return channels, mol
 
 
@@ -388,7 +348,7 @@ def getCenters(mol=None, buffer=0, boxsize=None, center=None, voxelsize=1):
     return centers, nvoxels
 
 
-def getVoxelDescriptors(mol, boxsize=None, voxelsize=1, buffer=0, center=None, usercenters=None, userchannels=None, 
+def getVoxelDescriptors(mol, boxsize=None, voxelsize=1, buffer=0, center=None, usercenters=None, userchannels=None,
                         usercoords=None, aromaticNitrogen=False, method='C', version=2, validitychecks=True, protein=True):
 
 
@@ -457,15 +417,17 @@ def getVoxelDescriptors(mol, boxsize=None, voxelsize=1, buffer=0, center=None, u
     """
 
     channels = userchannels
+    print(channels)
     if channels is None:
         channels, mol = getChannels(mol, aromaticNitrogen, version, validitychecks, protein=protein)
+        print('!!!!!!!!!!!!1', channels)
+
 
 
     if channels.dtype == bool:
         # Calculate for each channel the atom sigmas
         sigmas = _getChannelRadii(mol.element)
         channels = sigmas[:, np.newaxis] * channels.astype(float)
-
 
 
     nvoxels = None
@@ -493,6 +455,8 @@ def getVoxelDescriptors(mol, boxsize=None, voxelsize=1, buffer=0, center=None, u
         features = _getOccupancyCUDA(coords, centers, channels)
     elif method.upper() == 'NUMBA':
         features = _getOccupancyNUMBA(coords, centers, channels, 5)
+
+    #print(np.sum(np.abs(features)), '!!!!!!!!!!!')
 
 
 
@@ -559,7 +523,7 @@ def _getPropertiesRDkit(smallmol):
     return np.concatenate([properties,els], axis=-1)
 
 
-from moleculekit.tools.arpeggio import process_arpeggio
+# from arpeggio import process_arpeggio
 
 def _getAtomtypePropertiesPDBQT(mol):
 
@@ -687,6 +651,7 @@ def _getOccupancyNUMBA(coords, centers, channelsigmas, trunc):
     for a in range(natoms):
         coo = coords[a, :]
         atomsigmas = channelsigmas[a, :]
+        #print(coo, atomsigmas)
 
         for c in range(ncenters):
             cent = centers[c, :]
@@ -705,6 +670,7 @@ def _getOccupancyNUMBA(coords, centers, channelsigmas, trunc):
                     x12 = x3 * x3 * x3 * x3
                     value = 1 - exp(-x12)
                     occus[c, h] = max(occus[c, h], value)
+                    print(occus[c, h])
     return occus
 
 
@@ -862,7 +828,7 @@ class _TestVoxel(unittest.TestCase):
         mol.read(join(home(dataDir='test-voxeldescriptors'), '1ATL_prepared.pdb'))
 
         channels, mol_atomtyped = getChannels(mol)
-
+ 
         assert np.array_equal(ref_channels, channels)
         assert mol_equal(mol_atomtyped, ref_mol)
 
