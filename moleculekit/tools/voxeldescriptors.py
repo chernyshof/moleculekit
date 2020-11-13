@@ -91,7 +91,7 @@ def _getGridCenters(x, y, z, resolution):
     combined = combined.reshape([x, y, z, 3])
     return combined
 
-from moleculekit.tools.arpeggio_mol2 import process_arpeggio
+from moleculekit.tools.arpeggio import process_arpeggio
 from moleculekit.tools.atomtyper import getFeatures, getPDBQTAtomTypesAndCharges
 '''
     hydr = _getHydrophobic(atypes)
@@ -162,8 +162,11 @@ import numpy as np
 
 elms = mendeleev.elements.__all__
 
+from collections import OrderedDict
 
-orb_numbers = {'s':2, 'd':10, 'p':6}
+#orb_numbers = {'s':2, 'd':10, 'p':6}
+
+orb_numbers = OrderedDict([('s',2), ('d',10), ('p',6)])
 
 
 periodic_table = {}
@@ -209,13 +212,13 @@ def get_atomic_feature(elem):
 
 
 
+from moleculekit.molecule import Molecule
 
 
 
 
 def getChannels(mol, aromaticNitrogen=False, version=2, validitychecks=True, protein=True):
     #from moleculekit.smallmol.smallmol import SmallMol
-    from moleculekit.molecule import Molecule
 
     mol = mol.copy()
 
@@ -238,8 +241,11 @@ def getChannels(mol, aromaticNitrogen=False, version=2, validitychecks=True, pro
 
 
 
-            mol.write('temp.pdb')
-            s_atoms = process_arpeggio('temp.pdb')
+            from tempfile import NamedTemporaryFile
+            tmpmol2 = NamedTemporaryFile(suffix='.pdb').name
+            mol.write(tmpmol2)
+            s_atoms = process_arpeggio(tmpmol2)
+            os.remove(tmpmol2)
 
             channels = getFeatures(mol)
             # we take only
@@ -270,9 +276,11 @@ def getChannels(mol, aromaticNitrogen=False, version=2, validitychecks=True, pro
 
             arpeggio_features = np.stack(arpeggio_features, axis=0)
 
-            print('aaa', channels.shape, arpeggio_features.shape,amacid_features.shape,els.shape)
+            #print('aaa', channels.shape, arpeggio_features.shape,amacid_features.shape,els.shape)
 
-            channels = np.concatenate([channels,arpeggio_features,amacid_features,els], axis=-1  )
+            protein_feature = np.ones(shape=(len(channels),1), dtype=bool) # 1 for protein, 0 for ligand
+
+            channels = np.concatenate([channels,amacid_features,arpeggio_features,els,protein_feature], axis=-1  )
             #channels = np.concatenate([arpeggio_features,amacid_features,els], axis=-1  )
 
 
@@ -417,10 +425,10 @@ def getVoxelDescriptors(mol, boxsize=None, voxelsize=1, buffer=0, center=None, u
     """
 
     channels = userchannels
-    print(channels)
+    #print(channels)
     if channels is None:
         channels, mol = getChannels(mol, aromaticNitrogen, version, validitychecks, protein=protein)
-        print('!!!!!!!!!!!!1', channels)
+        #print('!!!!!!!!!!!!1', channels)
 
 
 
@@ -474,21 +482,41 @@ from moleculekit.smallmol.util import factory
 
 
 def _getPropertiesRDkit(smallmol):
-    """
-    Returns ndarray of shape (n_atoms x n_properties) molecule atom types,
-    according to the following definitions and order:
-        0. Hydrophibic
-        1. Aromatic
-        2. Acceptor
-        3. Donor
-        4. - Ionizable
-        5. + Ionizable
-        6. Metal (empty)
-        7. Occupancy (No hydrogens)
-    """
+
     n_atoms = smallmol.numAtoms
 
-    smallmol.write('tmp.pdb')
+
+    from tempfile import NamedTemporaryFile
+    tmpmol2 = NamedTemporaryFile(suffix='.pdb').name
+    smallmol.write(tmpmol2)
+    s_atoms = process_arpeggio(tmpmol2)
+    os.remove(tmpmol2)
+
+
+    # the order of s_atoms matches the order of channels
+    arpeggio_features = []
+
+
+
+    for i, atom in enumerate(s_atoms):
+        raw_features = sorted(tuple(s_atoms[i].atom_types))
+        feature_vector = np.zeros(len(arpeggio_atomtypes_unique), dtype=bool)
+        for rf in raw_features:
+            #print(rf)
+            if rf in arpeggio_atomtypes_unique:
+                feature_vector[arpeggio_atomtypes_unique[rf]] = 1
+
+        arpeggio_features.append(feature_vector)
+
+        if feature_vector[-1] != 0:
+            print(raw_features, feature_vector)
+
+
+
+    arpeggio_features = np.stack(arpeggio_features, axis=0)
+
+
+
 
     #atoms = ['C', 'O', 'N', 'S', 'P', 'Cl', 'F']
 
@@ -502,33 +530,49 @@ def _getPropertiesRDkit(smallmol):
                     "ZnBinder": 6,
                     }
 
+    # other features come from arpeggio
+    atom_mapping1 = {"Hydrophobe": 0,
+                    "LumpedHydrophobe": 1,
+                    "ZnBinder": 2,
+                    }
+
 
     feats = factory.GetFeaturesForMol(smallmol._mol)
-    properties = np.zeros((n_atoms, 15), dtype=bool)
+    properties = np.zeros((n_atoms, 3), dtype=bool)
+
+    protein_feature = np.zeros(shape=(len(properties),1), dtype=bool) # 0 for ligand
+
 
     for feat in feats:
         fam = feat.GetFamily()
-        if fam not in atom_mapping:  # Non relevant property
+        if fam not in atom_mapping1:  # Non relevant property
             continue
-        properties[feat.GetAtomIds(), atom_mapping[fam]] = 1
+        properties[feat.GetAtomIds(), atom_mapping1[fam]] = 1
 
     #for idx, atom in enumerate(atoms):
     #    properties[:, 7+idx] = smallmol.get('element') == atom
     els = np.stack([get_atomic_feature(e) for e in smallmol.get('element')], axis=0)
 
 
+
+
     # Occupancy, ignoring hydrogens.
-    properties[:, 14] = ~np.isin(smallmol.get('element'),  ['H'])
-    # smallmol.get('element') != 'H'
-    return np.concatenate([properties,els], axis=-1)
+    #properties[:, 3] = ~np.isin(smallmol.get('element'),  ['H'])
 
+    print([c.shape for c in [properties,arpeggio_features,els,protein_feature]])
 
-# from arpeggio import process_arpeggio
+    channels = np.concatenate([properties,arpeggio_features,els,protein_feature], axis=-1  )
+
+    return channels
+
 
 def _getAtomtypePropertiesPDBQT(mol):
 
-    mol.write('temp.pdb')
-    process_arpeggio('temp.pdb')
+    from tempfile import NamedTemporaryFile
+    tmpmol2 = NamedTemporaryFile(suffix='.pdb').name
+    mol.write(tmpmol2)
+    s_atoms = process_arpeggio(tmpmol2)
+    os.remove(tmpmol2)
 
 
     """ Matches PDBQT atom types to specific properties
@@ -670,7 +714,7 @@ def _getOccupancyNUMBA(coords, centers, channelsigmas, trunc):
                     x12 = x3 * x3 * x3 * x3
                     value = 1 - exp(-x12)
                     occus[c, h] = max(occus[c, h], value)
-                    print(occus[c, h])
+                    #print(occus[c, h])
     return occus
 
 

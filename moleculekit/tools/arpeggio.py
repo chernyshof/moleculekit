@@ -11,8 +11,8 @@ from Bio.PDB.Atom import Atom
 from Bio.PDB.Residue import Residue
 from Bio.PDB.Polypeptide import PPBuilder
 
-import openbabel as ob
-#from openbabel import openbabel as ob
+#import openbabel as ob
+from openbabel import openbabel as ob
 
 from moleculekit.config_mol import ATOM_TYPES, METALS, HALOGENS, STD_RES, PROT_ATOM_TYPES
 
@@ -25,6 +25,41 @@ from moleculekit.config_mol import ATOM_TYPES, METALS, HALOGENS, STD_RES, PROT_A
 ph = 7.4 #'pH for hydrogen addition.'
 headers = True # Write out column headers in output files.
 use_ambiguities = True #Turn on abiguous definitions for ambiguous contacts.
+
+
+###########
+# CLASSES #
+###########
+
+class HydrogenError(Exception):
+
+    def __init__(self):
+        logging.error('Please remove all hydrogens from the structure then re-run.')
+
+class OBBioMatchError(Exception):
+
+    def __init__(self, serial=''):
+
+        if not serial:
+            logging.error('An OpenBabel atom could not be matched to a BioPython counterpart.')
+
+        else:
+            logging.error('OpenBabel OBAtom with PDB serial number {} could not be matched to a BioPython counterpart.'.format(serial))
+
+class AtomSerialError(Exception):
+
+    def __init__(self):
+        logging.error('One or more atom serial numbers are duplicated.')
+
+class SiftMatchError(Exception):
+
+    def __init__(self):
+        logging.error('Seeing is not believing.')
+
+class SelectionError(Exception):
+
+    def __init__(self, selection):
+        logging.error('Invalid selector: {}'.format(selection))
 
 
 
@@ -262,8 +297,8 @@ def process_arpeggio(pdb_filename):
 
         return macro
 
-
     '''
+
     with open(pdb_filename.replace('.pdb', '.atomtypes'), 'w') as fo:
 
         if headers:
@@ -273,8 +308,11 @@ def process_arpeggio(pdb_filename):
 
         for atom in s_atoms:
             fo.write('{}\n'.format('\t'.join([str(x) for x in [make_pymol_string(atom), sorted(tuple(atom.atom_types))]])))
-    '''
+
     logging.info('Typed atoms.')
+
+
+    '''
 
     return s_atoms
 

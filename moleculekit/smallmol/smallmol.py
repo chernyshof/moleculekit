@@ -97,7 +97,7 @@ class SmallMol(object):
 
 
 
-    def __init__(self, mol, ignore_errors=False, force_reading=False, fixHs=True, removeHs=False, verbose=True):
+    def __init__(self, mol, ignore_errors=False, force_reading=True, fixHs=True, removeHs=False, verbose=True):
         self._frame = 0
 
         self._mol = self._initializeMolObj(mol, force_reading, ignore_errors, verbose)
@@ -160,8 +160,11 @@ class SmallMol(object):
                     # if the file failed to be loaded and 'force_reading' = True, file convert to sdf and than loaded
                     if _mol is None and force_reading:
                         logger.warning('Reading {} with force_reading procedure'.format(mol))
-                        sdf = openbabelConvert(mol, name_suffix, 'sdf')
-                        _mol = Chem.SDMolSupplier(sdf, removeHs=False)[0]
+                        sdf = openbabelConvert(mol, name_suffix, 'pdb')
+                        #_mol = Chem.SDMolSupplier(sdf, removeHs=False)[0]
+
+                        # fallback format is pdb now because of the broken valence error, see 1olu
+                        _mol = Chem.MolFromPDBFile(sdf, removeHs=False)
                         os.remove(sdf)
 
                     # Reset stderr
@@ -191,7 +194,7 @@ class SmallMol(object):
                 logger.warning(message)
             if isinstance(mol, str):
                 frerr = ' Try by setting the force_reading option as True.' if not force_reading else ''
-                raise ValueError(f'Failed to read file {mol}.{frerr}')
+                raise ValueError(f'Failed to read file {mol}.{frerr}, {message}')
             elif isinstance(mol, Molecule):
                 raise ValueError('Failed converting Molecule to SmallMol')
             else:
