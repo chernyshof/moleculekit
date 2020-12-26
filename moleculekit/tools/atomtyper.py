@@ -153,8 +153,8 @@ def prepareProteinForAtomtyping(mol, guessBonds=True, protonate=True, pH=7, segm
         protmol = autoSegment2(protmol, fields=('segid', 'chain'), _logger=verbose)  # Reassign segments after preparation
 
         # Assign separate segment to the metals just in case pybel takes that into account
-        if np.any(protmol.chain == 'Z') or np.any(protmol.segid == 'ME'):
-            raise AssertionError('Report this issue on the moleculekit github issue tracker. Too many chains in the protein.')
+        # if np.any(protmol.chain == 'Z') or np.any(protmol.segid == 'ME'):
+        #     raise AssertionError('Report this issue on the moleculekit github issue tracker. Too many chains in the protein.')
         metalmol.segid[:] = 'ME'
         metalmol.chain[:] = 'Z'
         metalmol.resid[:] = np.arange(metalmol.numAtoms) * 2 + protmol.resid.max() + 1 # Just in case, let's put a residue gap between the metals so that they are considered separate chains no matter what happens
