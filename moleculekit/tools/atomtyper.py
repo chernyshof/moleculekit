@@ -75,8 +75,8 @@ def getPDBQTAtomType(atype, aidx, mol, aromaticNitrogen=False):
 
 def getProperties(mol):
     try:
-        #import pybel
-        from openbabel import pybel
+        import pybel
+        #from openbabel import pybel
     except ImportError:
         raise ImportError('Could not import openbabel. The atomtyper requires this dependency so please install it with `conda install openbabel -c conda-forge`')
     
